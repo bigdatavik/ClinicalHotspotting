@@ -47,6 +47,7 @@ generate_synthetic_data ──► run_sdp_pipeline ──┬──► create_met
 2. A workspace with **Unity Catalog**, **serverless compute** (jobs + pipelines), **AI Functions** (Foundation Model APIs), and **Genie**.
 3. An existing **catalog** where you have `USE CATALOG` and `CREATE SCHEMA`. The bundle creates the schema.
 4. A **SQL warehouse** you can use (serverless is recommended). If you don't specify one, the first serverless warehouse you can see is used.
+5. Optional: [`jq`](https://jqlang.org/), used by the verification and cleanup commands to look up the Genie space ID.
 
 ---
 
@@ -55,22 +56,116 @@ generate_synthetic_data ──► run_sdp_pipeline ──┬──► create_met
 ```bash
 git clone https://github.com/bigdatavik/ClinicalHotspotting.git
 cd ClinicalHotspotting
-
-# 1. Validate
-databricks bundle validate -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
-
-# 2. Deploy the job, pipeline and notebooks
-databricks bundle deploy   -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
-
-# 3. Run everything end to end (data → pipeline → metric view → Genie agent)
+databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 ```
 
-At the end, the `create_genie_agent` task prints the Genie agent URL and the answer to a test question. You can also find
-the agent under **Genie** in the workspace sidebar.
+That's all you need: `deploy` creates the job, pipeline and notebooks, and `run` builds the data, the metric view **and the
+Genie agent**. The step-by-step guide below explains each step and how to check it.
 
-A first run takes about **30 minutes** (28 min in testing: data 1 min, pipeline 25 min, metric view + Genie 1 min).
-Most of the pipeline time goes to the AI functions, which make about 75k LLM calls (mostly `ai_classify` on ~45k pharmacy claims).
+---
+
+## Step-by-step deployment guide
+
+### Step 1 — Get the code
+
+```bash
+git clone https://github.com/bigdatavik/ClinicalHotspotting.git
+cd ClinicalHotspotting
+```
+
+### Step 2 — Authenticate the Databricks CLI to your workspace
+
+```bash
+databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile <PROFILE>
+databricks current-user me --profile <PROFILE>      # should print your user
+```
+
+Every command below uses `--profile <PROFILE>`. If you already have a profile, run `databricks auth profiles` to list it.
+
+### Step 3 — Choose a catalog (and optionally a SQL warehouse)
+
+```bash
+databricks catalogs list   --profile <PROFILE>   # pick an existing catalog you can create schemas in
+databricks warehouses list --profile <PROFILE>   # optional: copy a warehouse ID for the Genie agent
+```
+
+- **Catalog** (required): the bundle creates the schema `clinical_hotspotting` in it. You need `USE CATALOG` and
+  `CREATE SCHEMA`.
+- **Warehouse** (optional): if you don't set one, the Genie task uses the first serverless warehouse you can see.
+
+The examples below pass these with `--var`. See [Configuration](#configuration) for other ways to set them once.
+
+### Step 4 — Validate the bundle
+
+```bash
+databricks bundle validate -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+```
+
+Expect `Validation OK!`.
+
+### Step 5 — Deploy the bundle
+
+```bash
+databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+# optionally add: --var="warehouse_id=<WAREHOUSE_ID>"
+```
+
+This uploads the notebooks and creates two resources:
+
+- Job: **`[dev <you>] Clinical Hotspotting End-to-End Pipeline`**
+- Pipeline: **`[dev <you>] clinical-hotspotting-sdp`**
+
+The **Genie agent is not created yet**. It is created in Step 6, after its tables exist (see
+[why](#why-the-genie-agent-is-created-by-a-job-task-not-a-bundle-resource)). To print the job and pipeline URLs, run
+`databricks bundle summary -t dev --profile <PROFILE> --var="catalog=<CATALOG>"`.
+
+### Step 6 — Run the end-to-end job (this also creates the Genie agent)
+
+```bash
+databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+```
+
+The command prints a run URL and waits until the job finishes. The job runs four tasks on serverless compute:
+
+| # | Task | Notebook | Creates | Time (tested) |
+|---|---|---|---|---|
+| 1 | `generate_synthetic_data` | `01_generate_synthetic_data` | Schema + 8 source tables | ~1 min |
+| 2 | `run_sdp_pipeline` | `02`–`04` (pipeline) | 8 bronze, 8 silver (AI-enriched), 8 gold tables | ~25 min |
+| 3 | `create_metric_view` | `05_create_metric_view` | `mv_clinical_hotspotting` | <1 min |
+| 4 | `create_genie_agent` | `09_genie_config` | **Genie agent** (create or update) + smoke-test question | ~1 min |
+
+Most of the pipeline time goes to the AI functions, which make about 75k LLM calls (mostly `ai_classify` on ~45k
+pharmacy claims).
+
+### Step 7 — Verify the deployment
+
+```bash
+# Tables: expect 5000 members and ~3,200 actionable hotspots
+databricks experimental aitools tools query \
+  "SELECT COUNT(*) AS members, SUM(CAST(is_actionable_hotspot AS INT)) AS actionable
+   FROM <CATALOG>.clinical_hotspotting.gold_member_hotspots" --profile <PROFILE>
+
+# Genie agent: find its ID
+databricks genie list-spaces --profile <PROFILE> -o json \
+  | jq -r '.spaces[] | select(.title | test("Clinical Hotspotting")) | "\(.space_id)  \(.title)"'
+
+# Ask the agent a question
+databricks genie start-conversation <SPACE_ID> "How many actionable hotspot members are there in each market?" --profile <PROFILE>
+```
+
+In the workspace UI:
+
+- **Jobs & Pipelines** → the job run shows 4 green tasks. Open `create_genie_agent` to see the agent's URL, space ID, and
+  its answer to the test question.
+- **Genie** (sidebar) → **Clinical Hotspotting & Outcomes Intelligence**. Try the sample questions.
+- **Catalog** → `<CATALOG>.clinical_hotspotting` → open any gold table → **Lineage**.
+
+### Step 8 — Run the demo
+
+Open `06_demo` (walkthrough) and `07_demo_talk_track` (presenter script) from the bundle folder in your workspace,
+`/Workspace/Users/<you>/.bundle/clinical-hotspotting/dev/files/src`. Set the `catalog` / `schema` widgets at the top to
+your values. See [Running the demo](#running-the-demo).
 
 ---
 
@@ -163,25 +258,61 @@ the pipeline runs, so a `genie_spaces` bundle resource would fail on the first `
 runs after the pipeline. It checks every example and benchmark query against the data, then creates or updates the
 agent by title. The full definition lives in that notebook.
 
+What this means in practice:
+
+| Action | Job, pipeline, notebooks | Genie agent |
+|---|---|---|
+| `bundle deploy` | Created / updated | Not touched |
+| `bundle run clinical_hotspotting_e2e` | Run | **Created**, or **updated** if an agent with the same `genie_title` exists |
+| `bundle destroy` | Deleted | **Not deleted.** Trash it separately (see [Clean up](#clean-up)) |
+| Edit Genie instructions / SQL / benchmarks | — | Edit `src/09_genie_config.py`, then deploy and run the Genie task |
+
 ---
 
 ## Re-running and updating
 
-- **Refresh data:** re-run the job. Source tables are overwritten (same seed, so the data is identical), the pipeline
-  recomputes, and the Genie agent is updated in place.
-- **Change Genie instructions, examples or benchmarks:** edit `src/09_genie_config.py`, then `bundle deploy` and re-run
-  the job (or run only the `create_genie_agent` task from the job UI).
+**Refresh everything.** Re-run the job. Source tables are overwritten (same seed, so the data is identical), the
+pipeline recomputes, and the Genie agent is updated in place:
+
+```bash
+databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+```
+
+**Change only the Genie agent** (instructions, example SQL, synonyms, benchmarks). Edit `src/09_genie_config.py`, then
+deploy and run just that task:
+
+```bash
+databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>" --only create_genie_agent
+```
+
+**Change pipeline code** (`02`–`04`). Deploy, then run the pipeline task and everything after it:
+
+```bash
+databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>" --only run_sdp_pipeline+
+```
+
+**Second copy in the same workspace.** Use a different `schema` and `genie_title`, so the copies don't overwrite each other:
+
+```bash
+databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>" --var="schema=clinical_hotspotting_v2" --var="genie_title=Clinical Hotspotting v2"
+```
 
 ## Clean up
 
+Run all three steps. `bundle destroy` doesn't remove the Genie agent or the data.
+
 ```bash
-# Delete the job, pipeline and deployed files
+# 1. Delete the job, pipeline and deployed files
 databricks bundle destroy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 
-# Delete the Genie agent (ID is printed by the create_genie_agent task)
+# 2. Delete the Genie agent (find its ID first)
+databricks genie list-spaces --profile <PROFILE> -o json \
+  | jq -r '.spaces[] | select(.title | test("Clinical Hotspotting")) | "\(.space_id)  \(.title)"'
 databricks genie trash-space <SPACE_ID> --profile <PROFILE>
 
-# Drop the data
+# 3. Drop the data (schema and all tables, including the metric view)
 databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hotspotting CASCADE" --profile <PROFILE>
 ```
 
@@ -194,3 +325,11 @@ databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hots
 | Pipeline fails on `ai_*` functions | AI Functions / Foundation Model APIs are not enabled in this workspace or region |
 | `create_genie_agent` fails with "No SQL warehouse found" | Pass `--var="warehouse_id=<ID>"` |
 | Genie smoke test times out | The warehouse was cold. Re-run the task, or set `genie_smoke_test=false` |
+
+## Known issues
+
+- **Metric view measures are inflated by the encounter join.** `mv_clinical_hotspotting` joins member-level gold rows
+  to `silver_encounters`, so members with several encounters are counted several times. For example, the actionable
+  rate by market reads about 0.80, while the true overall rate is 0.645. This affects member-level measures (rates,
+  averages, per-1,000 figures, cost). `MEASURE(total_members)` uses `COUNT(DISTINCT)` and is correct. The Genie agent
+  doesn't use the metric view, so its answers aren't affected.
