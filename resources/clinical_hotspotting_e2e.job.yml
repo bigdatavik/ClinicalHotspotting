@@ -1,0 +1,50 @@
+resources:
+  jobs:
+    clinical_hotspotting_e2e:
+      name: Clinical Hotspotting End-to-End Pipeline
+      description: >
+        Synthetic data → SDP pipeline (bronze / silver + AI / gold) → governed metric view → Genie agent.
+        Runs on serverless compute.
+      max_concurrent_runs: 1
+
+      # Job parameters are passed to every notebook task as widgets
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: warehouse_id
+          default: ${var.warehouse_id}
+        - name: genie_title
+          default: ${var.genie_title}
+        - name: parent_path
+          default: ${workspace.file_path}
+        - name: smoke_test
+          default: ${var.genie_smoke_test}
+
+      tasks:
+        - task_key: generate_synthetic_data
+          notebook_task:
+            notebook_path: ../src/01_generate_synthetic_data.py
+
+        - task_key: run_sdp_pipeline
+          depends_on:
+            - task_key: generate_synthetic_data
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.clinical_hotspotting.id}
+            full_refresh: false
+
+        - task_key: create_metric_view
+          depends_on:
+            - task_key: run_sdp_pipeline
+          notebook_task:
+            notebook_path: ../src/05_create_metric_view.py
+
+        - task_key: create_genie_agent
+          depends_on:
+            - task_key: run_sdp_pipeline
+          notebook_task:
+            notebook_path: ../src/09_genie_config.py
+
+      tags:
+        project: clinical-hotspotting

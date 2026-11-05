@@ -3,7 +3,7 @@
 # MAGIC %md
 # MAGIC # 01 — Generate Synthetic Source Data
 # MAGIC
-# MAGIC Generates **8 PHI-free synthetic source tables** in `payer_catalog_vm.clinical_hotspotting`.
+# MAGIC Generates **8 PHI-free synthetic source tables** in `{catalog}.{schema}` (set by the `catalog` / `schema` widgets or job parameters).
 # MAGIC Run this notebook **before** triggering the SDP pipeline (notebooks 02–04).
 # MAGIC
 # MAGIC | Table | Rows | Description |
@@ -12,7 +12,7 @@
 # MAGIC | `providers` | 400 | Provider roster with specialty, peer group, transplant flag |
 # MAGIC | `encounters` | ~9,100 | ED, Inpatient, Observation — including transplant cases |
 # MAGIC | `medical_claims` | ~24,000 | Office visits, labs, imaging, specialist, home health, DME |
-# MAGIC | `pharmacy_claims` | ~79,000 | Drug fills by therapeutic class with days supply |
+# MAGIC | `pharmacy_claims` | ~45,000 | Drug fills by therapeutic class with days supply |
 # MAGIC | `care_gaps` | ~19,500 | HEDIS-aligned open and closed care gaps |
 # MAGIC | `care_interventions` | ~1,400 | Care management outreach with pre/post ED utilization |
 # MAGIC | `sdoh` | 5,000 | Social determinants: housing, food, transport, isolation, ADI |
@@ -20,8 +20,10 @@
 # COMMAND ----------
 
 # DBTITLE 1,Setup: create schema
-CATALOG = "payer_catalog_vm"
-SCHEMA  = "clinical_hotspotting"
+dbutils.widgets.text("catalog", "main", "Catalog")
+dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA  = dbutils.widgets.get("schema")
 FQSN    = f"{CATALOG}.{SCHEMA}"
 SEED    = 42
 
@@ -280,7 +282,7 @@ display(df_med.limit(3))
 
 # COMMAND ----------
 
-# DBTITLE 1,Generate pharmacy_claims (~79,000 rows)
+# DBTITLE 1,Generate pharmacy_claims (~45,000 rows)
 random.seed(SEED + 4)
 
 rx_rows  = []

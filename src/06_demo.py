@@ -13,9 +13,9 @@
 # MAGIC - **One governed place**
 # MAGIC - **Always up to date**
 # MAGIC
-# MAGIC **Schema:** `payer_catalog_vm.clinical_hotspotting`  
-# MAGIC **Pipeline:** `clinical-hotspotting-sdp` (serverless, triggered)  
-# MAGIC **Genie Agent:** Clinical Hotspotting & Outcomes Intelligence (`01f1cf40908913ea983a926f9f815ce8`)
+# MAGIC **Schema:** `{catalog}.{schema}` (set the widgets at the top; the bundle passes them in)  
+# MAGIC **Pipeline:** `clinical-hotspotting-sdp` SDP pipeline (serverless, triggered)  
+# MAGIC **Genie Agent:** Clinical Hotspotting & Outcomes Intelligence (created by the `create_genie_agent` job task)
 
 # COMMAND ----------
 
@@ -80,8 +80,10 @@
 
 # DBTITLE 1,Setup
 # Setup
-CATALOG = "payer_catalog_vm"
-SCHEMA = "clinical_hotspotting"
+dbutils.widgets.text("catalog", "main", "Catalog")
+dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
+CATALOG = dbutils.widgets.get("catalog")
+SCHEMA = dbutils.widgets.get("schema")
 SEED = 42
 FQSN = f"{CATALOG}.{SCHEMA}"
 
@@ -101,7 +103,7 @@ for t in sorted(tables, key=lambda x: x.tableName):
 # MAGIC
 # MAGIC > **What is a Genie agent?** An AI assistant for business users. You ask a question in plain English; it works out which approved tables to use, writes the SQL, runs it, and returns the answer with the query shown — no dashboard to build and no ticket to file.
 # MAGIC
-# MAGIC [Clinical Hotspotting & Outcomes Intelligence](https://<your-workspace>.cloud.databricks.com/genie/rooms/01f1cf40908913ea983a926f9f815ce8?o=7474651608287314) answers questions in plain English over curated, governed tables. It knows the plan's business definitions and synonyms, shows the SQL behind every answer, and is tested against benchmark questions with known answers.
+# MAGIC **Clinical Hotspotting & Outcomes Intelligence** answers questions in plain English over curated, governed tables. It knows the plan's business definitions and synonyms, shows the SQL behind every answer, and is tested against benchmark questions with known answers.
 # MAGIC
 # MAGIC ### Example questions
 # MAGIC 1. How many actionable hotspot members are there in each market?
@@ -200,7 +202,7 @@ ORDER BY member_count DESC
 # MAGIC
 # MAGIC > **What is a metric view?** A shared, governed definition of each business KPI. Instead of every report calculating "readmission rate" its own way, the formula lives in one place and every tool — Genie, dashboards, notebooks — uses it.
 # MAGIC
-# MAGIC [mv_clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/mv_clinical_hotspotting?o=7474651608287314) — 10 dimensions x 14 measures, including:
+# MAGIC `mv_clinical_hotspotting` — 10 dimensions x 14 measures, including:
 # MAGIC - ED visits per 1,000, admits per 1,000, readmission rate
 # MAGIC - Actionable hotspot rate, average risk score, average hotspot score
 # MAGIC - PMPM cost, total allowed cost
@@ -236,7 +238,7 @@ display(df)
 # MAGIC
 # MAGIC > **What is hotspotting?** Finding the small group of members who drive a large share of avoidable cost — repeat ER visits, admissions, readmissions — while there is still time to help them.
 # MAGIC
-# MAGIC [gold_member_hotspots](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_member_hotspots?o=7474651608287314) has one row per member with a composite **hotspot score** (ED visits, admissions, 30-day readmissions, open care gaps, non-adherent medications, social barriers) and an **actionable** flag: high utilization *and* something the plan can fix. 3,225 of 5,000 members are actionable.
+# MAGIC `gold_member_hotspots` has one row per member with a composite **hotspot score** (ED visits, admissions, 30-day readmissions, open care gaps, non-adherent medications, social barriers) and an **actionable** flag: high utilization *and* something the plan can fix. 3,225 of 5,000 members are actionable.
 # MAGIC
 # MAGIC Below: the member profile by risk band, and the ZIP areas with the highest share of actionable members.
 
@@ -282,7 +284,7 @@ ORDER BY actionable_hotspot_rate DESC LIMIT 15
 # MAGIC
 # MAGIC > **What is the pipeline?** An automated assembly line that turns raw feeds into trusted, business-ready tables in three layers — **Bronze** (raw, checked), **Silver** (cleaned, with AI insight) and **Gold** (answers for each team). It refreshes as new data arrives.
 # MAGIC
-# MAGIC The [clinical-hotspotting-sdp](https://<your-workspace>.cloud.databricks.com/pipelines/3a787df4-c258-4195-89e2-7c8df1cd5d7e?o=7474651608287314) pipeline: Gold (answers for each team) ← Silver (cleaned, with AI insight) ← Bronze (raw data, checked).
+# MAGIC The `clinical-hotspotting-sdp` pipeline: Gold (answers for each team) ← Silver (cleaned, with AI insight) ← Bronze (raw data, checked).
 # MAGIC
 # MAGIC ### Gold: answers for each team (8 tables)
 # MAGIC
@@ -375,7 +377,7 @@ ORDER BY ai_insight, records DESC
 # MAGIC
 # MAGIC > **What is a Bronze table?** The landing zone — each feed stored exactly as it arrived, so there is always a record of the original data.
 # MAGIC
-# MAGIC Every feed lands in Bronze exactly as sent, and basic quality rules (valid member IDs, sensible dates and amounts) are checked on every run, so problems are caught before anyone acts on the data. The pipeline graph shows pass/fail counts for each check: [clinical-hotspotting-sdp](https://<your-workspace>.cloud.databricks.com/pipelines/3a787df4-c258-4195-89e2-7c8df1cd5d7e?o=7474651608287314).
+# MAGIC Every feed lands in Bronze exactly as sent, and basic quality rules (valid member IDs, sensible dates and amounts) are checked on every run, so problems are caught before anyone acts on the data. The pipeline graph shows pass/fail counts for each check: `clinical-hotspotting-sdp`.
 
 # COMMAND ----------
 
@@ -422,7 +424,7 @@ print(f"  {'TOTAL':25s} {total:>8,}")
 # MAGIC
 # MAGIC > **What is Unity Catalog?** One place to govern every data and AI asset: who can see what, where each number came from (lineage), and who accessed it (audit).
 # MAGIC
-# MAGIC Everything above — feeds, pipeline layers, AI output, metric view — lives in one Unity Catalog schema, [payer_catalog_vm.clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting?o=7474651608287314), with the same access control, lineage and audit. Below: every object, by layer.
+# MAGIC Everything above — feeds, pipeline layers, AI output, metric view — lives in one Unity Catalog schema (`{catalog}.{schema}`), with the same access control, lineage and audit. Below: every object, by layer.
 
 # COMMAND ----------
 
@@ -454,7 +456,7 @@ for layer, names in layers.items():
 # MAGIC
 # MAGIC > **What is a job?** A scheduled workflow that runs each step in the right order, so the data, AI output and answers stay current without anyone running them by hand.
 # MAGIC
-# MAGIC [Clinical Hotspotting End-to-End Pipeline](https://<your-workspace>.cloud.databricks.com/jobs/223148564459396?o=7474651608287314) runs three tasks in order — load data → run the pipeline → validate the results — on a schedule or when new data lands ([run history](https://<your-workspace>.cloud.databricks.com/jobs/223148564459396/runs?o=7474651608287314)). The metric view and Genie read Gold directly, so they always reflect the latest run.
+# MAGIC **Clinical Hotspotting End-to-End Pipeline** runs three tasks in order — load data → run the pipeline → validate the results — on a schedule or when new data lands (**run history**). The metric view and Genie read Gold directly, so they always reflect the latest run.
 
 # COMMAND ----------
 
@@ -483,6 +485,6 @@ for layer, names in layers.items():
 # MAGIC
 # MAGIC ### To rebuild from scratch
 # MAGIC 1. Run `01_generate_synthetic_data`
-# MAGIC 2. Trigger pipeline `clinical-hotspotting-sdp`
+# MAGIC 2. Trigger the `clinical-hotspotting-sdp` SDP pipeline
 # MAGIC 3. Run the metric view DDL from `05_create_metric_view` on a SQL warehouse
 # MAGIC 4. The Genie agent picks up refreshed data from its attached tables automatically

@@ -1,0 +1,21 @@
+resources:
+  pipelines:
+    clinical_hotspotting:
+      name: clinical-hotspotting-sdp
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      photon: true
+      channel: CURRENT
+      libraries:
+        - notebook:
+            path: ../src/02_sdp_bronze.py
+        - notebook:
+            path: ../src/03_sdp_silver_ai.py
+        - notebook:
+            path: ../src/04_sdp_gold.py
+      configuration:
+        # Read by 02_sdp_bronze.py — where 01_generate_synthetic_data wrote the raw tables
+        source_catalog: ${var.catalog}
+        source_schema: ${var.schema}

@@ -6,27 +6,34 @@
 # MAGIC Read-along script for a 30–40 minute demo, with discovery questions and pain-point quantification woven in.
 # MAGIC Each step has **Open**, **Show**, **Say**, **Ask**, and where relevant **How much is it costing?**.
 # MAGIC
-# MAGIC ## Asset links (open in new tabs before the call)
+# MAGIC ## Assets to open in new tabs before the call
 # MAGIC
-# MAGIC | Asset | Link |
+# MAGIC After `databricks bundle deploy`, the notebooks live under the bundle folder in your workspace (`.bundle/clinical-hotspotting/<target>/files/src`), the job and pipeline are under **Jobs & Pipelines**, and the Genie agent is under **Genie**.
+# MAGIC
+# MAGIC | Asset | Name in workspace |
 # MAGIC | --- | --- |
-# MAGIC | Project folder | [ClinicalHotspotting](https://<your-workspace>.cloud.databricks.com/browse/folders/416746867690760?o=7474651608287314) |
-# MAGIC | Config notebook | [00_config](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690761?o=7474651608287314) |
-# MAGIC | Data generation | [01_generate_synthetic_data](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690762?o=7474651608287314) |
-# MAGIC | Bronze layer | [02_sdp_bronze](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690763?o=7474651608287314) |
-# MAGIC | Silver + AI layer | [03_sdp_silver_ai](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690764?o=7474651608287314) |
-# MAGIC | Gold layer | [04_sdp_gold](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690765?o=7474651608287314) |
-# MAGIC | Metric view DDL | [05_create_metric_view](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690766?o=7474651608287314) |
-# MAGIC | Demo walkthrough | [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314) |
-# MAGIC | Pipeline | [clinical-hotspotting-sdp](https://<your-workspace>.cloud.databricks.com/pipelines/3a787df4-c258-4195-89e2-7c8df1cd5d7e?o=7474651608287314) |
-# MAGIC | Orchestration job | [Clinical Hotspotting End-to-End Pipeline](https://<your-workspace>.cloud.databricks.com/jobs/223148564459396?o=7474651608287314) |
-# MAGIC | Schema (Catalog Explorer) | [payer_catalog_vm.clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting?o=7474651608287314) |
-# MAGIC | Metric view | [mv_clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/mv_clinical_hotspotting?o=7474651608287314) |
-# MAGIC | Member hotspots table | [gold_member_hotspots](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_member_hotspots?o=7474651608287314) |
-# MAGIC | AI narratives table | [gold_clinical_narratives](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_clinical_narratives?o=7474651608287314) |
-# MAGIC | AI recommendations table | [gold_intervention_recs](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_intervention_recs?o=7474651608287314) |
-# MAGIC | Metric view SQL query | [Create mv_clinical_hotspotting Metric View](https://<your-workspace>.cloud.databricks.com/editor/queries/302110241899839?o=7474651608287314) |
-# MAGIC | Genie agent | [Clinical Hotspotting & Outcomes Intelligence](https://<your-workspace>.cloud.databricks.com/genie/rooms/01f1cf40908913ea983a926f9f815ce8?o=7474651608287314) |
+# MAGIC | Project folder | `.bundle/clinical-hotspotting/<target>/files/src` |
+# MAGIC | Config notebook | `00_config` |
+# MAGIC | Data generation | `01_generate_synthetic_data` |
+# MAGIC | Bronze layer | `02_sdp_bronze` |
+# MAGIC | Silver + AI layer | `03_sdp_silver_ai` |
+# MAGIC | Gold layer | `04_sdp_gold` |
+# MAGIC | Metric view DDL | `05_create_metric_view` |
+# MAGIC | Demo walkthrough | `06_demo` |
+# MAGIC | Pipeline | `clinical-hotspotting-sdp` |
+# MAGIC | Orchestration job | **Clinical Hotspotting End-to-End Pipeline** |
+# MAGIC | Schema (Catalog Explorer) | `{catalog}.{schema}` |
+# MAGIC | Metric view | `mv_clinical_hotspotting` |
+# MAGIC | Member hotspots table | `gold_member_hotspots` |
+# MAGIC | AI narratives table | `gold_clinical_narratives` |
+# MAGIC | AI recommendations table | `gold_intervention_recs` |
+# MAGIC # MAGIC | Genie agent | **Clinical Hotspotting & Outcomes Intelligence** |
+
+# COMMAND ----------
+
+# DBTITLE 1,Parameters (used by the live SQL cells)
+dbutils.widgets.text("catalog", "main", "Catalog")
+dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
 
 # COMMAND ----------
 
@@ -104,10 +111,10 @@
 # MAGIC %md
 # MAGIC ## Before the call
 # MAGIC
-# MAGIC - [ ] Run the [orchestration job](https://<your-workspace>.cloud.databricks.com/jobs/223148564459396?o=7474651608287314) and confirm the latest run succeeded.
+# MAGIC - [ ] Run the **orchestration job** and confirm the latest run succeeded.
 # MAGIC - [ ] Open all tabs from the asset table above.
-# MAGIC - [ ] Pre-run [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314) so results are already visible.
-# MAGIC - [ ] Open the [Genie agent](https://<your-workspace>.cloud.databricks.com/genie/rooms/01f1cf40908913ea983a926f9f815ce8?o=7474651608287314) and start a fresh conversation.
+# MAGIC - [ ] Pre-run `06_demo` so results are already visible.
+# MAGIC - [ ] Open the **Genie agent** and start a fresh conversation.
 # MAGIC
 # MAGIC **Safe to ask Genie live:** market counts, PDC (proportion of days covered, i.e. medication adherence) by risk band, AI recommendations for Very High risk members, provider readmission outliers (risk-adjusted observed/expected ratio above 1.20), open care gaps (HEDIS quality measures not yet met), transplant volume.
 # MAGIC
@@ -126,7 +133,7 @@
 # MAGIC %md
 # MAGIC ## Step 1 — Short opening and discovery (3 min)
 # MAGIC
-# MAGIC **Open:** Nothing yet. Keep the screen on a title slide or the [project folder](https://<your-workspace>.cloud.databricks.com/browse/folders/416746867690760?o=7474651608287314).
+# MAGIC **Open:** Nothing yet. Keep the screen on a title slide or the **project folder**.
 # MAGIC
 # MAGIC **Say:** "Care management teams can't reach everyone. Hotspotting means finding the small group of members driving most of the avoidable utilization and cost, while there's still time to change the outcome. I'm going to start by showing you the end result, then walk backwards through how we built it. First, a couple of quick questions so I focus on what matters to you."
 # MAGIC
@@ -168,7 +175,7 @@
 # MAGIC %md
 # MAGIC ## Step 2 — Start with the end: the Genie agent (10 min, the centerpiece)
 # MAGIC
-# MAGIC **Open:** [Clinical Hotspotting & Outcomes Intelligence](https://<your-workspace>.cloud.databricks.com/genie/rooms/01f1cf40908913ea983a926f9f815ce8?o=7474651608287314) (new chat)
+# MAGIC **Open:** **Clinical Hotspotting & Outcomes Intelligence** (new chat)
 # MAGIC
 # MAGIC **Say (opening):** "Let me start with the end result. This is what a care management director, a market leader or a Stars lead would actually use. No dashboard to learn, no ticket to file — they just ask."
 # MAGIC
@@ -205,7 +212,7 @@
 # MAGIC %md
 # MAGIC # How we built it — working backwards from the answer
 # MAGIC
-# MAGIC Put the end-to-end picture from [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314) (first chart) on screen and walk it **right to left** while you talk.
+# MAGIC Put the end-to-end picture from `06_demo` (first chart) on screen and walk it **right to left** while you talk.
 # MAGIC
 # MAGIC | Order | You just saw | It comes from | Step |
 # MAGIC | --- | --- | --- | --- |
@@ -224,9 +231,9 @@
 # MAGIC %md
 # MAGIC ## Step 3 — Why every number matches: the metric view (3 min)
 # MAGIC
-# MAGIC **Open:** [mv_clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/mv_clinical_hotspotting?o=7474651608287314) in Catalog Explorer and the [metric view SQL query](https://<your-workspace>.cloud.databricks.com/editor/queries/302110241899839?o=7474651608287314)
+# MAGIC **Open:** `mv_clinical_hotspotting` in Catalog Explorer and the **metric view SQL query**
 # MAGIC
-# MAGIC **Show:** Dimensions, measures, comments and formats. Optionally the market query in [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314).
+# MAGIC **Show:** Dimensions, measures, comments and formats. Optionally the market query in `06_demo`.
 # MAGIC
 # MAGIC **Say:** "One step back from Genie. ED visits per 1,000, readmission rate, PMPM, adherence and actionable rate are each defined once, here. Genie, dashboards and notebooks all use the same definitions, so the CFO, the CMO and the Stars team see the same number."
 # MAGIC
@@ -242,7 +249,7 @@
 # MAGIC %md
 # MAGIC ## Step 4 — Where the actionable list comes from: hotspot scoring (3 min)
 # MAGIC
-# MAGIC **Open:** [gold_member_hotspots](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_member_hotspots?o=7474651608287314), logic in [04_sdp_gold](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690765?o=7474651608287314), and the risk band and geographic cells in [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314)
+# MAGIC **Open:** `gold_member_hotspots`, logic in `04_sdp_gold`, and the risk band and geographic cells in `06_demo`
 # MAGIC
 # MAGIC **Say:** "Behind those definitions is a scored list of every member. Each one gets a hotspot score from ED visits, admissions, 30-day readmissions, open care gaps, non-adherent medications and social barriers. Then we flag who is actionable: high utilization *and* something we can actually fix. That's 3,180 of 5,000 members. The scoring is plain SQL, so your medical directors can review and change the weights."
 # MAGIC
@@ -257,7 +264,7 @@
 # MAGIC %md
 # MAGIC ## Step 5 — How the data gets made: the pipeline, walked backwards (8 min)
 # MAGIC
-# MAGIC **Open:** [clinical-hotspotting-sdp pipeline graph](https://<your-workspace>.cloud.databricks.com/pipelines/3a787df4-c258-4195-89e2-7c8df1cd5d7e?o=7474651608287314). Walk the graph **right to left**: Gold ← Silver ← Bronze. Code is in [02_sdp_bronze](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690763?o=7474651608287314), [03_sdp_silver_ai](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690764?o=7474651608287314) and [04_sdp_gold](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690765?o=7474651608287314), but you don't need to open it.
+# MAGIC **Open:** **clinical-hotspotting-sdp pipeline graph**. Walk the graph **right to left**: Gold ← Silver ← Bronze. Code is in `02_sdp_bronze`, `03_sdp_silver_ai` and `04_sdp_gold`, but you don't need to open it.
 # MAGIC
 # MAGIC **Say (framing):** "One more level down — how that member list gets made. Think of this as an assembly line for member intelligence, and we're reading it from the finished product backwards. On the right is Gold: the answers. In the middle is Silver, where AI reads every record. On the left is Bronze, where raw files come in and get checked. It refreshes automatically every time new data arrives."
 # MAGIC
@@ -323,7 +330,7 @@
 # MAGIC %md
 # MAGIC ### 5d — Show the AI working inside the pipeline (part of Step 5)
 # MAGIC
-# MAGIC **Open:** [03_sdp_silver_ai](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690764?o=7474651608287314), then sample rows in [gold_clinical_narratives](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_clinical_narratives?o=7474651608287314) and [gold_intervention_recs](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/gold_intervention_recs?o=7474651608287314)
+# MAGIC **Open:** `03_sdp_silver_ai`, then sample rows in `gold_clinical_narratives` and `gold_intervention_recs`
 # MAGIC
 # MAGIC **Show:** `ai_summarize`, `ai_classify`, `ai_analyze_sentiment` running as SQL inside the pipeline.
 # MAGIC
@@ -346,7 +353,7 @@
 # MAGIC %md
 # MAGIC #### Example — what one AI step in the pipeline looks like
 # MAGIC
-# MAGIC Each AI function is one SQL expression inside a pipeline table definition in [03_sdp_silver_ai](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690764?o=7474651608287314). The pattern is always the same: **build a short text description of the row with `CONCAT`, then pass it to an AI function**. The result is stored as a new column and refreshed on every pipeline run.
+# MAGIC Each AI function is one SQL expression inside a pipeline table definition in `03_sdp_silver_ai`. The pattern is always the same: **build a short text description of the row with `CONCAT`, then pass it to an AI function**. The result is stored as a new column and refreshed on every pipeline run.
 # MAGIC
 # MAGIC | Silver table | AI function | New column | What it returns |
 # MAGIC | --- | --- | --- | --- |
@@ -380,7 +387,7 @@
 # MAGIC **Say while showing it:**
 # MAGIC > "This is the whole AI step. We describe each open care gap in a sentence — the measure, when it was found, when it's due — and ask the model to pick one of three labels. No model training, no separate service, no data leaving the platform. It's a column in a governed table, so a Stars lead can filter to High Priority gaps like any other field."
 # MAGIC
-# MAGIC **Then show the result:** open [silver_care_gaps](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting/silver_care_gaps?o=7474651608287314) → **Sample Data** and point at the `ai_priority` column, or run the live cell below.
+# MAGIC **Then show the result:** open `silver_care_gaps` → **Sample Data** and point at the `ai_priority` column, or run the live cell below.
 
 # COMMAND ----------
 
@@ -422,9 +429,9 @@
 # MAGIC   cn.ai_clinical_summary,
 # MAGIC   ir.ai_recommended_intervention,
 # MAGIC   ir.ai_recommendation_rationale
-# MAGIC FROM payer_catalog_vm.clinical_hotspotting.gold_intervention_recs ir
-# MAGIC JOIN payer_catalog_vm.clinical_hotspotting.gold_clinical_narratives cn ON ir.member_id = cn.member_id
-# MAGIC JOIN payer_catalog_vm.clinical_hotspotting.gold_member_hotspots mh ON ir.member_id = mh.member_id
+# MAGIC FROM IDENTIFIER(:catalog || '.' || :schema || '.gold_intervention_recs') ir
+# MAGIC JOIN IDENTIFIER(:catalog || '.' || :schema || '.gold_clinical_narratives') cn ON ir.member_id = cn.member_id
+# MAGIC JOIN IDENTIFIER(:catalog || '.' || :schema || '.gold_member_hotspots') mh ON ir.member_id = mh.member_id
 # MAGIC WHERE mh.risk_band = 'Very High'
 # MAGIC ORDER BY mh.hotspot_score DESC
 # MAGIC LIMIT 3
@@ -435,7 +442,7 @@
 # MAGIC %md
 # MAGIC ## Step 6 — Where it all starts: the source feeds (3 min)
 # MAGIC
-# MAGIC **Open:** [01_generate_synthetic_data](https://<your-workspace>.cloud.databricks.com/editor/notebooks/416746867690762?o=7474651608287314), then the row-count cell in [06_demo](https://<your-workspace>.cloud.databricks.com/editor/notebooks/302110241899841?o=7474651608287314)
+# MAGIC **Open:** `01_generate_synthetic_data`, then the row-count cell in `06_demo`
 # MAGIC
 # MAGIC **Show:** 8 source tables — members, providers, encounters, medical and pharmacy claims, care gaps, interventions, SDoH.
 # MAGIC
@@ -454,7 +461,7 @@
 # MAGIC %md
 # MAGIC ## Step 7 — All in one governed place (2 min)
 # MAGIC
-# MAGIC **Open:** [Project folder](https://<your-workspace>.cloud.databricks.com/browse/folders/416746867690760?o=7474651608287314) and [payer_catalog_vm.clinical_hotspotting](https://<your-workspace>.cloud.databricks.com/explore/data/payer_catalog_vm/clinical_hotspotting?o=7474651608287314)
+# MAGIC **Open:** **Project folder** and the `{catalog}.{schema}` schema
 # MAGIC
 # MAGIC **Show:** Notebooks `00`–`06`, the job, and the single Unity Catalog schema. Click any gold table → **Lineage** to show it traces back to the source tables.
 # MAGIC
@@ -470,7 +477,7 @@
 # MAGIC %md
 # MAGIC ## Step 8 — Automation (2 min)
 # MAGIC
-# MAGIC **Open:** [Clinical Hotspotting End-to-End Pipeline job](https://<your-workspace>.cloud.databricks.com/jobs/223148564459396?o=7474651608287314)
+# MAGIC **Open:** **Clinical Hotspotting End-to-End Pipeline job**
 # MAGIC
 # MAGIC **Show:** Three tasks — `generate_data` → `run_sdp_pipeline` → `run_demo` — and the run history.
 # MAGIC

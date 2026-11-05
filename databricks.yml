@@ -1,0 +1,43 @@
+# Clinical Hotspotting & Outcomes Intelligence — Databricks Asset Bundle
+#
+# Deploy to any workspace by pointing at a CLI profile and setting `catalog`:
+#
+#   databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+#   databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
+#
+# See README.md for details.
+
+bundle:
+  name: clinical-hotspotting
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to write to (must already exist; you need USE CATALOG + CREATE SCHEMA on it).
+  schema:
+    description: Schema created inside the catalog for all source, bronze, silver, gold and metric-view objects.
+    default: clinical_hotspotting
+  warehouse_id:
+    description: SQL warehouse ID for the Genie agent. Leave empty to auto-pick the first serverless warehouse you can see.
+    default: ""
+  genie_title:
+    description: Title of the Genie agent. An existing agent with this exact title is updated instead of duplicated.
+    default: Clinical Hotspotting & Outcomes Intelligence
+  genie_smoke_test:
+    description: When "true", the Genie task asks the agent a test question and fails the job if it cannot answer.
+    default: "true"
+
+targets:
+  dev:
+    default: true
+    mode: development   # resources are prefixed "[dev <your name>]" and deployed under your user folder
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - level: CAN_VIEW
+        group_name: users
