@@ -23,7 +23,7 @@
 # MAGIC | Pipeline | `clinical-hotspotting-sdp` |
 # MAGIC | Orchestration job | **Clinical Hotspotting End-to-End Pipeline** |
 # MAGIC | Schema (Catalog Explorer) | `{catalog}.{schema}` |
-# MAGIC | Metric view | `mv_clinical_hotspotting` |
+# MAGIC | Metric views | `mv_clinical_hotspotting` (per member), `mv_encounter_utilization` (per encounter) |
 # MAGIC | Member hotspots table | `gold_member_hotspots` |
 # MAGIC | AI narratives table | `gold_clinical_narratives` |
 # MAGIC | AI recommendations table | `gold_intervention_recs` |
@@ -121,7 +121,6 @@ dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
 # MAGIC **Avoid live:**
 # MAGIC - Intervention engagement and ED (emergency department) visit reduction questions (those benchmarks still fail).
 # MAGIC - The 100% ED reductions — they come from groups of 1–2 members.
-# MAGIC - Metric view totals broken out by encounter — members repeat per encounter, which inflates sums.
 # MAGIC
 # MAGIC **Say once, up front:** the data is synthetic — 5,000 members across 10 markets, no PHI (protected health information).
 # MAGIC
@@ -231,9 +230,9 @@ dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
 # MAGIC %md
 # MAGIC ## Step 3 — Why every number matches: the metric view (3 min)
 # MAGIC
-# MAGIC **Open:** `mv_clinical_hotspotting` in Catalog Explorer and the **metric view SQL query**
+# MAGIC **Open:** `mv_clinical_hotspotting` and `mv_encounter_utilization` in Catalog Explorer, and `05_create_metric_view`
 # MAGIC
-# MAGIC **Show:** Dimensions, measures, comments and formats. Optionally the market query in `06_demo`.
+# MAGIC **Show:** Dimensions, measures, comments and formats. Point out the two grains: member KPIs (rates, per-1,000, cost per member) live in the member view, utilization by diagnosis, provider and month in the encounter view, so no number is double-counted. The last cell of `05_create_metric_view` reconciles both views with the source tables on every run.
 # MAGIC
 # MAGIC **Say:** "One step back from Genie. ED visits per 1,000, readmission rate, PMPM, adherence and actionable rate are each defined once, here. Genie, dashboards and notebooks all use the same definitions, so the CFO, the CMO and the Stars team see the same number."
 # MAGIC

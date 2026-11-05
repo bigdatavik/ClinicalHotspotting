@@ -19,7 +19,7 @@ All data is **synthetic and PHI-free**.
 |---|---|---|
 | Job | `Clinical Hotspotting End-to-End Pipeline` | Orchestrates the 4 steps below on serverless compute |
 | Pipeline (SDP, serverless) | `clinical-hotspotting-sdp` | 8 bronze → 8 silver (5 AI-enriched) → 8 gold tables |
-| Metric view | `<catalog>.<schema>.mv_clinical_hotspotting` | 10 dimensions × 14 governed KPIs |
+| Metric views | `mv_clinical_hotspotting` (one row per member), `mv_encounter_utilization` (one row per encounter) | 14 member KPIs + 9 encounter KPIs, reconciled with the source tables on every run |
 | Genie agent | `Clinical Hotspotting & Outcomes Intelligence` | 9 tables, instructions, example SQL, joins, snippets, synonyms, entity matching, 10 sample questions, 12 benchmarks |
 
 Job tasks:
@@ -132,7 +132,7 @@ The command prints a run URL and waits until the job finishes. The job runs four
 |---|---|---|---|---|
 | 1 | `generate_synthetic_data` | `01_generate_synthetic_data` | Schema + 8 source tables | ~1 min |
 | 2 | `run_sdp_pipeline` | `02`–`04` (pipeline) | 8 bronze, 8 silver (AI-enriched), 8 gold tables | ~25 min |
-| 3 | `create_metric_view` | `05_create_metric_view` | `mv_clinical_hotspotting` | <1 min |
+| 3 | `create_metric_view` | `05_create_metric_view` | `mv_clinical_hotspotting` + `mv_encounter_utilization`, then reconciles them with the source tables | <1 min |
 | 4 | `create_genie_agent` | `09_genie_config` | **Genie agent** (create or update) + smoke-test question | ~1 min |
 
 Most of the pipeline time goes to the AI functions, which make about 75k LLM calls (mostly `ai_classify` on ~45k
@@ -244,7 +244,7 @@ src/
   02_sdp_bronze.py                     SDP bronze + expectations
   03_sdp_silver_ai.py                  SDP silver + AI Functions
   04_sdp_gold.py                       SDP gold + AI narratives/recommendations
-  05_create_metric_view.py             governed metric view
+  05_create_metric_view.py             governed metric views (member + encounter grain) + reconciliation check
   06_demo.py                           demo walkthrough
   07_demo_talk_track.py                presenter talk track
   09_genie_config.py                   Genie agent as code (create/update + smoke test)
@@ -312,7 +312,7 @@ databricks genie list-spaces --profile <PROFILE> -o json \
   | jq -r '.spaces[] | select(.title | test("Clinical Hotspotting")) | "\(.space_id)  \(.title)"'
 databricks genie trash-space <SPACE_ID> --profile <PROFILE>
 
-# 3. Drop the data (schema and all tables, including the metric view)
+# 3. Drop the data (schema and all tables, including the metric views)
 databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hotspotting CASCADE" --profile <PROFILE>
 ```
 
@@ -326,10 +326,15 @@ databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hots
 | `create_genie_agent` fails with "No SQL warehouse found" | Pass `--var="warehouse_id=<ID>"` |
 | Genie smoke test times out | The warehouse was cold. Re-run the task, or set `genie_smoke_test=false` |
 
-## Known issues
+## Metric view design
 
-- **Metric view measures are inflated by the encounter join.** `mv_clinical_hotspotting` joins member-level gold rows
-  to `silver_encounters`, so members with several encounters are counted several times. For example, the actionable
-  rate by market reads about 0.80, while the true overall rate is 0.645. This affects member-level measures (rates,
-  averages, per-1,000 figures, cost). `MEASURE(total_members)` uses `COUNT(DISTINCT)` and is correct. The Genie agent
-  doesn't use the metric view, so its answers aren't affected.
+Each metric view has a single grain, so no measure double-counts:
+
+- **`mv_clinical_hotspotting`**: one row per member, from `gold_member_hotspots`. Use it for "how many / what share
+  of members" (actionable rate, per-1,000 rates, cost per member, adherence, SDoH).
+- **`mv_encounter_utilization`**: one row per encounter, from `silver_encounters` with many-to-one joins to providers
+  and members. Use it for utilization by encounter type, diagnosis, provider, specialty or month.
+
+An earlier version joined member rows to encounters in one view. That repeated each member once per encounter and
+inflated member KPIs (for example, the actionable rate read ~0.80 instead of ~0.65). The last cell of
+`05_create_metric_view` compares both views with the source tables and fails the job if they ever disagree.

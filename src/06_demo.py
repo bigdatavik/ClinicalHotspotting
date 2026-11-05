@@ -202,11 +202,10 @@ ORDER BY member_count DESC
 # MAGIC
 # MAGIC > **What is a metric view?** A shared, governed definition of each business KPI. Instead of every report calculating "readmission rate" its own way, the formula lives in one place and every tool — Genie, dashboards, notebooks — uses it.
 # MAGIC
-# MAGIC `mv_clinical_hotspotting` — 10 dimensions x 14 measures, including:
-# MAGIC - ED visits per 1,000, admits per 1,000, readmission rate
-# MAGIC - Actionable hotspot rate, average risk score, average hotspot score
-# MAGIC - PMPM cost, total allowed cost
-# MAGIC - SDoH barriers, open care gaps, medication adherence (PDC)
+# MAGIC Two metric views, each with one grain so every KPI counts each member or encounter exactly once:
+# MAGIC
+# MAGIC - `mv_clinical_hotspotting` — **one row per member**, 11 dimensions x 14 measures: actionable hotspot rate, ED visits and admits per 1,000, readmission rate, average risk and hotspot score, cost per member, total allowed cost, SDoH barriers, open care gaps, medication adherence (PDC)
+# MAGIC - `mv_encounter_utilization` — **one row per encounter**, 9 dimensions x 9 measures: encounters by type, diagnosis, provider group, peer group, specialty and month; 30-day readmission rate, complication rate, length of stay, cost per encounter
 # MAGIC
 # MAGIC Each KPI is defined once in Unity Catalog, so Genie, dashboards and notebooks all return the same number.
 
@@ -441,6 +440,8 @@ for name in sorted(objects):
         layers["Gold"].append(name)
     elif name.startswith("mv_"):
         layers["Metric view"].append(name)
+    elif name.startswith("__") or name.startswith("event_log"):
+        continue  # pipeline-internal tables
     else:
         layers["Source feeds"].append(name)
 
@@ -471,8 +472,8 @@ for layer, names in layers.items():
 # MAGIC | 3 | Bronze (SDP) | 8 `bz_*` tables | Mirrors source with expectations |
 # MAGIC | 4 | Silver (SDP + AI) | 8 `silver_*` tables | 5 AI-enriched |
 # MAGIC | 5 | Gold (SDP) | 8 `gold_*` tables | 3,225 actionable members |
-# MAGIC | 6 | Metric view | `mv_clinical_hotspotting` | 14 measures x 10 dimensions |
-# MAGIC | 7 | Genie agent | 9 tables, 13 benchmarks | 10/13 passing |
+# MAGIC | 6 | Metric views | `mv_clinical_hotspotting`, `mv_encounter_utilization` | Member grain (14 measures) + encounter grain (9 measures) |
+# MAGIC | 7 | Genie agent | 9 tables, 12 benchmarks | Created by `09_genie_config` |
 # MAGIC
 # MAGIC ### Notebooks in this project
 # MAGIC - `00_config` — shared constants
@@ -480,7 +481,7 @@ for layer, names in layers.items():
 # MAGIC - `02_sdp_bronze` — Bronze layer
 # MAGIC - `03_sdp_silver_ai` — Silver layer with AI functions
 # MAGIC - `04_sdp_gold` — Gold layer
-# MAGIC - `05_create_metric_view` — metric view DDL
+# MAGIC - `05_create_metric_view` — metric view DDL (member + encounter grain)
 # MAGIC - `06_demo` — this notebook
 # MAGIC
 # MAGIC ### To rebuild from scratch
