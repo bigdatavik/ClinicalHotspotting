@@ -11,6 +11,10 @@
 #   databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 #   databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 #
+# Tear everything down (bundle resources, Genie agent, schema + data), with confirmation:
+#
+#   scripts/destroy.sh -p <PROFILE> -c <CATALOG> [-t <TARGET>] [-s <SCHEMA>] [-g "<GENIE_TITLE>"]
+#
 # Every target needs a SERVERLESS SQL warehouse for the Genie agent. See README.md for details.
 
 bundle:
@@ -42,13 +46,13 @@ variables:
       AWS i3.xlarge or m5d.xlarge, Azure Standard_D4ds_v5, GCP n2-highmem-4.
     default: ""
   spark_version:
-    description: Databricks Runtime for the job cluster. Metric views need 16.4 LTS or newer.
-    default: 16.4.x-scala2.12
+    description: Databricks Runtime for the job cluster. The metric views use YAML spec 1.1, which needs DBR 17.2+.
+    default: 17.3.x-scala2.13
   num_workers:
     description: Workers for the job cluster and the pipeline cluster.
     default: 2
   existing_cluster_id:
-    description: All-purpose (interactive) cluster ID for the notebook tasks in the `interactive` target. Must be UC-enabled, DBR 16.4+.
+    description: All-purpose (interactive) cluster ID for the notebook tasks in the `interactive` target. Must be UC-enabled, DBR 17.2+ (17.3 LTS recommended).
     default: ""
 
 targets:

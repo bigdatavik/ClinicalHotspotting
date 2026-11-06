@@ -184,7 +184,7 @@ Everything that changes per workspace is a bundle variable in [`databricks.yml`]
 | `genie_title` | `Clinical Hotspotting & Outcomes Intelligence` | Agent title. An agent with this exact title is **updated**, not duplicated |
 | `genie_smoke_test` | `"true"` | Ask the agent a test question and fail the job if it can't answer |
 | `node_type_id` | `""` | `classic` / `interactive` only: node type for the job cluster and pipeline cluster (cloud-specific) |
-| `spark_version` | `16.4.x-scala2.12` | `classic` only: runtime for the job cluster (metric views need 16.4 LTS+) |
+| `spark_version` | `17.3.x-scala2.13` | `classic` only: runtime for the job cluster (the metric views use YAML spec 1.1, which needs DBR 17.2+) |
 | `num_workers` | `2` | `classic` / `interactive`: workers for the job cluster and pipeline cluster |
 | `existing_cluster_id` | `""` | `interactive` only: all-purpose cluster for the notebook tasks |
 
@@ -236,8 +236,8 @@ cluster when serverless is unavailable: the task just fails. Pick the target tha
 | No serverless, and you want an existing cluster | `interactive` | Your **all-purpose cluster** | Classic pipeline cluster | Serverless SQL warehouse |
 
 - SDP pipelines can never run on an all-purpose cluster. They always start their own cluster, even in `interactive`.
-- Clusters use Unity Catalog in dedicated (single-user) access mode with DBR 16.4 LTS or newer. For `interactive`, your
-  cluster must be UC-enabled and on 16.4+.
+- Clusters use Unity Catalog in dedicated (single-user) access mode with DBR 17.3 LTS (17.2+ is required for the metric views' YAML spec 1.1). For `interactive`, your
+  cluster must be UC-enabled and on 17.2+.
 - Serverless SQL warehouses are a separate setting from serverless jobs and pipelines, so a workspace without serverless
   jobs can still have one.
 
@@ -255,6 +255,10 @@ databricks bundle run clinical_hotspotting_e2e -t interactive --profile <PROFILE
 
 Use the same target in every command (deploy, run, destroy). Each target is a separate deployment with its own job and
 pipeline.
+
+**Tested:** `classic` ran end to end on Azure (`Standard_D4ds_v5`, 2 workers, DBR 17.3 LTS): data generation ~12 min
+(including job cluster start-up), pipeline ~45 min, metric views and Genie ~1 min each. Expect about 1 hour, versus ~30 min
+on serverless. The results matched the serverless run exactly (5,000 members, 3,225 actionable).
 
 ---
 
@@ -289,6 +293,7 @@ src/
   06_demo.py                           demo walkthrough
   07_demo_talk_track.py                presenter talk track
   09_genie_config.py                   Genie agent as code (create/update + smoke test)
+scripts/destroy.sh                     one-command teardown (bundle, Genie agent, schema) with confirmation + verify
 docs/architecture.png
 ```
 
@@ -305,7 +310,7 @@ What this means in practice:
 |---|---|---|
 | `bundle deploy` | Created / updated | Not touched |
 | `bundle run clinical_hotspotting_e2e` | Run | **Created**, or **updated** if an agent with the same `genie_title` exists |
-| `bundle destroy` | Deleted | **Not deleted.** Trash it separately (see [Clean up](#clean-up)) |
+| `bundle destroy` | Deleted (the pipeline's bronze/silver/gold tables too) | **Deleted**, because the agent is created inside the bundle folder (`parent_path`), which destroy removes |
 | Edit Genie instructions / SQL / benchmarks | — | Edit `src/09_genie_config.py`, then deploy and run the Genie task |
 
 ---
@@ -347,19 +352,51 @@ in a workspace.
 
 ## Clean up
 
-Run all three steps. `bundle destroy` doesn't remove the Genie agent or the data.
+### One command (recommended)
+
+[`scripts/destroy.sh`](scripts/destroy.sh) deletes everything this project created. It shows a plan, asks you to type
+the schema name to confirm, then checks that nothing is left:
 
 ```bash
-# 1. Delete the job, pipeline and deployed files
+# Default deployment (target dev, schema clinical_hotspotting)
+scripts/destroy.sh -p <PROFILE> -c <CATALOG>
+
+# Custom target / schema / Genie title: use the same values you deployed with
+scripts/destroy.sh -p <PROFILE> -c <CATALOG> -t classic -s clinical_hotspotting_v2 -g "Clinical Hotspotting v2"
+
+# Extra bundle variables go after --  (e.g. for the interactive target)
+scripts/destroy.sh -p <PROFILE> -c <CATALOG> -t interactive -- --var=existing_cluster_id=<CLUSTER_ID>
+
+# Non-interactive (CI): skip the confirmation prompt
+scripts/destroy.sh -p <PROFILE> -c <CATALOG> -y
+```
+
+| Step | What it deletes |
+|---|---|
+| 1. `bundle destroy` | Job, pipeline (with its bronze/silver/gold tables), deployed files, and the Genie agent in the bundle folder |
+| 2. Genie | Any agent still left with the exact `genie_title` (for example, created outside the bundle folder) |
+| 3. Schema | `<CATALOG>.<SCHEMA>` with the 8 source tables and 2 metric views (`databricks schemas delete --force`) |
+| 4. Verify | Fails (exit 1) if the schema, a Genie agent or the pipeline still exists |
+
+Requires `jq`. Tested end to end on Azure, including the abort path for a wrong confirmation.
+
+### Manual commands
+
+Use the same target and variables you deployed with (for example `-t classic --var="node_type_id=..."`).
+
+```bash
+# 1. Delete the job, the pipeline (with its bronze/silver/gold tables), the deployed files,
+#    and the Genie agent (it lives in the bundle folder)
 databricks bundle destroy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 
-# 2. Delete the Genie agent (find its ID first)
-databricks genie list-spaces --profile <PROFILE> -o json \
-  | jq -r '.spaces[] | select(.title | test("Clinical Hotspotting")) | "\(.space_id)  \(.title)"'
-databricks genie trash-space <SPACE_ID> --profile <PROFILE>
+# 2. Drop the rest of the data: the schema, the 8 source tables and the 2 metric views
+databricks schemas delete <CATALOG>.clinical_hotspotting --force --profile <PROFILE>
 
-# 3. Drop the data (schema and all tables, including the metric views)
-databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hotspotting CASCADE" --profile <PROFILE>
+# 3. Check that no Genie agent is left (prints nothing when clean)
+databricks genie list-spaces --profile <PROFILE> -o json \
+  | jq -r '.spaces[]? | select(.title | test("Clinical Hotspotting")) | "\(.space_id)  \(.title)"'
+# If one is listed (for example, created before this behavior or with a custom parent_path):
+databricks genie trash-space <SPACE_ID> --profile <PROFILE>
 ```
 
 ## Troubleshooting

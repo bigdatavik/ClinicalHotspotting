@@ -17,6 +17,7 @@ src/04_sdp_gold.py                  gold_* (member hotspots, cohorts, geo, inter
 src/05_create_metric_view.py        mv_clinical_hotspotting (member grain) + mv_encounter_utilization (encounter grain) + reconciliation
 src/06_demo.py, 07_demo_talk_track.py   presenter notebooks (not run by the job)
 src/09_genie_config.py              Genie agent as code: validates SQL, creates or updates by title, smoke-test question
+scripts/destroy.sh                  full teardown: bundle destroy → trash Genie by title → schemas delete --force → verify
 prompts/                            git-ignored local prompts (not part of the repo)
 ```
 
@@ -36,6 +37,9 @@ databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var=
 ... bundle run clinical_hotspotting_e2e ... --only create_genie_agent
 ... bundle run clinical_hotspotting_e2e ... --only run_sdp_pipeline+     # pipeline and everything downstream
 
+# Full teardown (asks you to type the schema name; -y skips the prompt). Use the same target/schema/title as the deploy.
+scripts/destroy.sh -p <PROFILE> -c <CATALOG> [-t <TARGET>] [-s <SCHEMA>] [-g "<GENIE_TITLE>"] [-- <extra --var args>]
+
 # Ad-hoc SQL checks
 databricks experimental aitools tools query "<SQL>" --profile <PROFILE> -o json
 ```
@@ -48,7 +52,7 @@ only reach the workspace on deploy.
 | Target | Notebook tasks | Pipeline | Extra vars |
 |---|---|---|---|
 | `dev` (default), `prod` | serverless | serverless | — |
-| `classic` | shared job cluster `main` (UC SINGLE_USER, `spark_version` default 16.4 LTS) | classic cluster | `node_type_id` |
+| `classic` | shared job cluster `main` (UC SINGLE_USER, `spark_version` default 17.3 LTS; metric view YAML 1.1 needs DBR 17.2+) | classic cluster | `node_type_id` |
 | `interactive` | `existing_cluster_id` | classic cluster | `existing_cluster_id`, `node_type_id` |
 
 - There is **no automatic fallback** to classic compute. The target decides. Overrides live under `targets.<t>.resources`
@@ -77,8 +81,10 @@ Prefer `--only <task>` when iterating, and don't trigger a full run without a re
   only, and add a separate view for a new grain. The reconciliation cell at the end of `05_create_metric_view.py` must
   keep passing. Extend it when you add measures.
 - **The Genie agent is created by a job task, not a `genie_spaces` bundle resource.** The Genie API rejects a space whose
-  tables don't exist yet, which would break the first deploy on a fresh workspace. So `bundle destroy` doesn't delete the
-  agent; trash it with `databricks genie trash-space <ID>`.
+  tables don't exist yet, which would break the first deploy on a fresh workspace. The job passes
+  `parent_path = ${workspace.file_path}`, so the agent lives in the bundle folder and **`bundle destroy` deletes it**
+  (verified 2026-11-05). Destroy also deletes the pipeline's tables (`cascade_on_destroy` defaults to true). The source
+  tables, metric views and schema remain; drop them with `DROP SCHEMA ... CASCADE`.
 - **Genie config lives in `09_genie_config.py`.** It uses `serialized_space` version 2 with deterministic uuid5 ids, and
   id-keyed arrays must be sorted by id. Every example and benchmark SQL runs before the API call. Verify column names
   against the gold tables: the original config referenced columns that didn't exist (`organ_type`, `gap_type`, a
