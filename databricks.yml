@@ -1,11 +1,17 @@
 # Clinical Hotspotting & Outcomes Intelligence — Databricks Asset Bundle
 #
-# Deploy to any workspace by pointing at a CLI profile and setting `catalog`:
+# Deploy to any workspace by pointing at a CLI profile and setting `catalog`.
+# Pick the target that matches the compute your workspace allows (there is NO automatic fallback):
+#
+#   dev / prod   serverless jobs + serverless pipeline (default)
+#   classic      job cluster for notebook tasks + classic pipeline cluster   (needs --var node_type_id=...)
+#   interactive  existing all-purpose cluster for notebook tasks + classic pipeline cluster
+#                (needs --var existing_cluster_id=... and --var node_type_id=...)
 #
 #   databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 #   databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 #
-# See README.md for details.
+# Every target needs a SERVERLESS SQL warehouse for the Genie agent. See README.md for details.
 
 bundle:
   name: clinical-hotspotting
@@ -20,7 +26,7 @@ variables:
     description: Schema created inside the catalog for all source, bronze, silver, gold and metric-view objects.
     default: clinical_hotspotting
   warehouse_id:
-    description: SQL warehouse ID for the Genie agent. Leave empty to auto-pick the first serverless warehouse you can see.
+    description: SERVERLESS SQL warehouse ID for the Genie agent. Leave empty to auto-pick a serverless warehouse.
     default: ""
   genie_title:
     description: Title of the Genie agent. An existing agent with this exact title is updated instead of duplicated.
@@ -28,6 +34,22 @@ variables:
   genie_smoke_test:
     description: When "true", the Genie task asks the agent a test question and fails the job if it cannot answer.
     default: "true"
+
+  # ── Classic compute (only used by the `classic` and `interactive` targets) ─────────────────────────
+  node_type_id:
+    description: >
+      Worker/driver node type for the job cluster and the classic pipeline cluster. Cloud-specific, e.g.
+      AWS i3.xlarge or m5d.xlarge, Azure Standard_D4ds_v5, GCP n2-highmem-4.
+    default: ""
+  spark_version:
+    description: Databricks Runtime for the job cluster. Metric views need 16.4 LTS or newer.
+    default: 16.4.x-scala2.12
+  num_workers:
+    description: Workers for the job cluster and the pipeline cluster.
+    default: 2
+  existing_cluster_id:
+    description: All-purpose (interactive) cluster ID for the notebook tasks in the `interactive` target. Must be UC-enabled, DBR 16.4+.
+    default: ""
 
 targets:
   dev:
@@ -37,7 +59,60 @@ targets:
   prod:
     mode: production
     workspace:
-      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
     permissions:
+      - level: CAN_MANAGE
+        user_name: ${workspace.current_user.userName}
       - level: CAN_VIEW
         group_name: users
+
+  # No serverless jobs/pipelines: notebook tasks share one job cluster, the pipeline runs on classic compute.
+  classic:
+    mode: development
+    resources:
+      jobs:
+        clinical_hotspotting_e2e:
+          job_clusters:
+            - job_cluster_key: main
+              new_cluster:
+                spark_version: ${var.spark_version}
+                node_type_id: ${var.node_type_id}
+                num_workers: ${var.num_workers}
+                data_security_mode: SINGLE_USER   # Unity Catalog, dedicated to the job's run-as user
+                runtime_engine: STANDARD
+          tasks:
+            - task_key: generate_synthetic_data
+              job_cluster_key: main
+            - task_key: create_metric_view
+              job_cluster_key: main
+            - task_key: create_genie_agent
+              job_cluster_key: main
+      pipelines:
+        clinical_hotspotting:
+          serverless: false
+          clusters:
+            - label: default
+              node_type_id: ${var.node_type_id}
+              num_workers: ${var.num_workers}
+
+  # Notebook tasks run on an existing all-purpose cluster; the pipeline still needs its own classic cluster
+  # (SDP pipelines can never run on an all-purpose cluster).
+  interactive:
+    mode: development
+    resources:
+      jobs:
+        clinical_hotspotting_e2e:
+          tasks:
+            - task_key: generate_synthetic_data
+              existing_cluster_id: ${var.existing_cluster_id}
+            - task_key: create_metric_view
+              existing_cluster_id: ${var.existing_cluster_id}
+            - task_key: create_genie_agent
+              existing_cluster_id: ${var.existing_cluster_id}
+      pipelines:
+        clinical_hotspotting:
+          serverless: false
+          clusters:
+            - label: default
+              node_type_id: ${var.node_type_id}
+              num_workers: ${var.num_workers}

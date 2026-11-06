@@ -20,7 +20,7 @@
 # MAGIC | Gold layer | `04_sdp_gold` |
 # MAGIC | Metric view DDL | `05_create_metric_view` |
 # MAGIC | Demo walkthrough | `06_demo` |
-# MAGIC | Pipeline | `clinical-hotspotting-sdp` |
+# MAGIC | Pipeline | `clinical-hotspotting-sdp-<schema>` |
 # MAGIC | Orchestration job | **Clinical Hotspotting End-to-End Pipeline** |
 # MAGIC | Schema (Catalog Explorer) | `{catalog}.{schema}` |
 # MAGIC | Metric views | `mv_clinical_hotspotting` (per member), `mv_encounter_utilization` (per encounter) |
@@ -263,7 +263,7 @@ dbutils.widgets.text("schema", "clinical_hotspotting", "Schema")
 # MAGIC %md
 # MAGIC ## Step 5 — How the data gets made: the pipeline, walked backwards (8 min)
 # MAGIC
-# MAGIC **Open:** **clinical-hotspotting-sdp pipeline graph**. Walk the graph **right to left**: Gold ← Silver ← Bronze. Code is in `02_sdp_bronze`, `03_sdp_silver_ai` and `04_sdp_gold`, but you don't need to open it.
+# MAGIC **Open:** **clinical-hotspotting-sdp-<schema> pipeline graph**. Walk the graph **right to left**: Gold ← Silver ← Bronze. Code is in `02_sdp_bronze`, `03_sdp_silver_ai` and `04_sdp_gold`, but you don't need to open it.
 # MAGIC
 # MAGIC **Say (framing):** "One more level down — how that member list gets made. Think of this as an assembly line for member intelligence, and we're reading it from the finished product backwards. On the right is Gold: the answers. In the middle is Silver, where AI reads every record. On the left is Bronze, where raw files come in and get checked. It refreshes automatically every time new data arrives."
 # MAGIC

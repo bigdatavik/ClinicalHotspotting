@@ -1,7 +1,7 @@
 resources:
   pipelines:
     clinical_hotspotting:
-      name: clinical-hotspotting-sdp
+      name: clinical-hotspotting-sdp-${var.schema}   # schema in the name keeps pipelines unique per workspace
       catalog: ${var.catalog}
       schema: ${var.schema}
       serverless: true

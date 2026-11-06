@@ -14,7 +14,7 @@
 # MAGIC - **Always up to date**
 # MAGIC
 # MAGIC **Schema:** `{catalog}.{schema}` (set the widgets at the top; the bundle passes them in)  
-# MAGIC **Pipeline:** `clinical-hotspotting-sdp` SDP pipeline (serverless, triggered)  
+# MAGIC **Pipeline:** `clinical-hotspotting-sdp-<schema>` SDP pipeline (serverless or classic, triggered)  
 # MAGIC **Genie Agent:** Clinical Hotspotting & Outcomes Intelligence (created by the `create_genie_agent` job task)
 
 # COMMAND ----------
@@ -283,7 +283,7 @@ ORDER BY actionable_hotspot_rate DESC LIMIT 15
 # MAGIC
 # MAGIC > **What is the pipeline?** An automated assembly line that turns raw feeds into trusted, business-ready tables in three layers — **Bronze** (raw, checked), **Silver** (cleaned, with AI insight) and **Gold** (answers for each team). It refreshes as new data arrives.
 # MAGIC
-# MAGIC The `clinical-hotspotting-sdp` pipeline: Gold (answers for each team) ← Silver (cleaned, with AI insight) ← Bronze (raw data, checked).
+# MAGIC The `clinical-hotspotting-sdp-<schema>` pipeline: Gold (answers for each team) ← Silver (cleaned, with AI insight) ← Bronze (raw data, checked).
 # MAGIC
 # MAGIC ### Gold: answers for each team (8 tables)
 # MAGIC
@@ -376,7 +376,7 @@ ORDER BY ai_insight, records DESC
 # MAGIC
 # MAGIC > **What is a Bronze table?** The landing zone — each feed stored exactly as it arrived, so there is always a record of the original data.
 # MAGIC
-# MAGIC Every feed lands in Bronze exactly as sent, and basic quality rules (valid member IDs, sensible dates and amounts) are checked on every run, so problems are caught before anyone acts on the data. The pipeline graph shows pass/fail counts for each check: `clinical-hotspotting-sdp`.
+# MAGIC Every feed lands in Bronze exactly as sent, and basic quality rules (valid member IDs, sensible dates and amounts) are checked on every run, so problems are caught before anyone acts on the data. The pipeline graph shows pass/fail counts for each check: `clinical-hotspotting-sdp-<schema>`.
 
 # COMMAND ----------
 
@@ -486,6 +486,6 @@ for layer, names in layers.items():
 # MAGIC
 # MAGIC ### To rebuild from scratch
 # MAGIC 1. Run `01_generate_synthetic_data`
-# MAGIC 2. Trigger the `clinical-hotspotting-sdp` SDP pipeline
+# MAGIC 2. Trigger the `clinical-hotspotting-sdp-<schema>` SDP pipeline
 # MAGIC 3. Run the metric view DDL from `05_create_metric_view` on a SQL warehouse
 # MAGIC 4. The Genie agent picks up refreshed data from its attached tables automatically

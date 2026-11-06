@@ -47,12 +47,23 @@ DESCRIPTION = (
 from databricks.sdk import WorkspaceClient
 w = WorkspaceClient()
 
-if not WAREHOUSE_ID:
-    # Fall back to the first serverless / running warehouse the user can see
-    whs = sorted(w.warehouses.list(), key=lambda x: (not x.enable_serverless_compute, x.name or ""))
-    if not whs:
-        raise ValueError("No SQL warehouse found — pass the `warehouse_id` parameter.")
-    WAREHOUSE_ID = whs[0].id
+# The Genie agent must run on a SERVERLESS SQL warehouse (project requirement).
+if WAREHOUSE_ID:
+    wh = w.warehouses.get(WAREHOUSE_ID)
+    if not wh.enable_serverless_compute:
+        raise ValueError(
+            f"Warehouse '{wh.name}' ({WAREHOUSE_ID}) is not serverless. The Genie agent requires a serverless "
+            "SQL warehouse — pass a serverless `warehouse_id`, or leave it empty to auto-pick one."
+        )
+else:
+    serverless = sorted((x for x in w.warehouses.list() if x.enable_serverless_compute), key=lambda x: x.name or "")
+    if not serverless:
+        raise ValueError(
+            "No serverless SQL warehouse found. Create one (SQL Warehouses → Create → Type: Serverless) "
+            "or ask an admin to enable serverless SQL, then pass its ID as `warehouse_id`."
+        )
+    WAREHOUSE_ID = serverless[0].id
+    print(f"Auto-picked serverless warehouse: {serverless[0].name}")
 
 print(f"Schema       : {FQSN}")
 print(f"Warehouse ID : {WAREHOUSE_ID}")

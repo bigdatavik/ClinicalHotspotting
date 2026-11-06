@@ -17,8 +17,8 @@ All data is **synthetic and PHI-free**.
 
 | Resource | Name | What it does |
 |---|---|---|
-| Job | `Clinical Hotspotting End-to-End Pipeline` | Orchestrates the 4 steps below on serverless compute |
-| Pipeline (SDP, serverless) | `clinical-hotspotting-sdp` | 8 bronze → 8 silver (5 AI-enriched) → 8 gold tables |
+| Job | `Clinical Hotspotting End-to-End Pipeline` | Orchestrates the 4 steps below (serverless, a job cluster, or your cluster; see [Choosing compute](#choosing-compute)) |
+| Pipeline (SDP; serverless or classic) | `clinical-hotspotting-sdp-<schema>` | 8 bronze → 8 silver (5 AI-enriched) → 8 gold tables |
 | Metric views | `mv_clinical_hotspotting` (one row per member), `mv_encounter_utilization` (one row per encounter) | 14 member KPIs + 9 encounter KPIs, reconciled with the source tables on every run |
 | Genie agent | `Clinical Hotspotting & Outcomes Intelligence` | 9 tables, instructions, example SQL, joins, snippets, synonyms, entity matching, 10 sample questions, 12 benchmarks |
 
@@ -44,9 +44,12 @@ generate_synthetic_data ──► run_sdp_pipeline ──┬──► create_met
    ```bash
    databricks auth login --host https://<your-workspace>.cloud.databricks.com --profile <PROFILE>
    ```
-2. A workspace with **Unity Catalog**, **serverless compute** (jobs + pipelines), **AI Functions** (Foundation Model APIs), and **Genie**.
+2. A workspace with **Unity Catalog**, **AI Functions** (Foundation Model APIs) and **Genie**. Serverless jobs and pipelines
+   are recommended but **not required**. Without them, use the `classic` or `interactive` target (see
+   [Choosing compute](#choosing-compute)).
 3. An existing **catalog** where you have `USE CATALOG` and `CREATE SCHEMA`. The bundle creates the schema.
-4. A **SQL warehouse** you can use (serverless is recommended). If you don't specify one, the first serverless warehouse you can see is used.
+4. A **serverless SQL warehouse** for the Genie agent (required for every target). If you don't specify one, the first
+   serverless warehouse you can see is used. A pro or classic warehouse is rejected with a clear error.
 5. Optional: [`jq`](https://jqlang.org/), used by the verification and cleanup commands to look up the Genie space ID.
 
 ---
@@ -114,7 +117,7 @@ databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 This uploads the notebooks and creates two resources:
 
 - Job: **`[dev <you>] Clinical Hotspotting End-to-End Pipeline`**
-- Pipeline: **`[dev <you>] clinical-hotspotting-sdp`**
+- Pipeline: **`[dev <you>] clinical-hotspotting-sdp-clinical_hotspotting`**
 
 The **Genie agent is not created yet**. It is created in Step 6, after its tables exist (see
 [why](#why-the-genie-agent-is-created-by-a-job-task-not-a-bundle-resource)). To print the job and pipeline URLs, run
@@ -126,7 +129,7 @@ The **Genie agent is not created yet**. It is created in Step 6, after its table
 databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 ```
 
-The command prints a run URL and waits until the job finishes. The job runs four tasks on serverless compute:
+The command prints a run URL and waits until the job finishes. The job runs four tasks (on serverless for `dev`):
 
 | # | Task | Notebook | Creates | Time (tested) |
 |---|---|---|---|---|
@@ -177,9 +180,13 @@ Everything that changes per workspace is a bundle variable in [`databricks.yml`]
 |---|---|---|
 | `catalog` | *(required)* | Existing catalog to write to |
 | `schema` | `clinical_hotspotting` | Schema created inside the catalog |
-| `warehouse_id` | `""` (auto-pick) | SQL warehouse used by the Genie agent |
+| `warehouse_id` | `""` (auto-pick) | **Serverless** SQL warehouse used by the Genie agent |
 | `genie_title` | `Clinical Hotspotting & Outcomes Intelligence` | Agent title. An agent with this exact title is **updated**, not duplicated |
 | `genie_smoke_test` | `"true"` | Ask the agent a test question and fail the job if it can't answer |
+| `node_type_id` | `""` | `classic` / `interactive` only: node type for the job cluster and pipeline cluster (cloud-specific) |
+| `spark_version` | `16.4.x-scala2.12` | `classic` only: runtime for the job cluster (metric views need 16.4 LTS+) |
+| `num_workers` | `2` | `classic` / `interactive`: workers for the job cluster and pipeline cluster |
+| `existing_cluster_id` | `""` | `interactive` only: all-purpose cluster for the notebook tasks |
 
 Three ways to set them:
 
@@ -212,8 +219,42 @@ targets:
 
 | Target | Mode | Notes |
 |---|---|---|
-| `dev` (default) | development | Job/pipeline names are prefixed `[dev <you>]`; files go to `~/.bundle/clinical-hotspotting/dev` |
-| `prod` | production | Files go to `/Workspace/Shared/.bundle/clinical-hotspotting/prod`; `users` group gets CAN_VIEW |
+| `dev` (default) | development | Serverless. Job/pipeline names are prefixed `[dev <you>]`; files go to `~/.bundle/clinical-hotspotting/dev` |
+| `prod` | production | Serverless. Files go to `~/.bundle/clinical-hotspotting/prod`; you get CAN_MANAGE, the `users` group gets CAN_VIEW |
+| `classic` | development | No serverless: job cluster + classic pipeline cluster. Needs `node_type_id` |
+| `interactive` | development | No serverless: existing all-purpose cluster + classic pipeline cluster. Needs `existing_cluster_id` and `node_type_id` |
+
+### Choosing compute
+
+**There is no automatic fallback.** A bundle fixes its compute at deploy time, and Databricks doesn't switch a task to a
+cluster when serverless is unavailable: the task just fails. Pick the target that matches your workspace:
+
+| Your workspace has… | Use | Notebook tasks (`01`, `05`, `09`) | Pipeline (`02`–`04`) | Genie agent |
+|---|---|---|---|---|
+| Serverless jobs + pipelines | `dev` / `prod` | Serverless | Serverless | Serverless SQL warehouse |
+| No serverless jobs/pipelines | `classic` | One shared **job cluster** (starts with the run, stops after) | Classic pipeline cluster | Serverless SQL warehouse |
+| No serverless, and you want an existing cluster | `interactive` | Your **all-purpose cluster** | Classic pipeline cluster | Serverless SQL warehouse |
+
+- SDP pipelines can never run on an all-purpose cluster. They always start their own cluster, even in `interactive`.
+- Clusters use Unity Catalog in dedicated (single-user) access mode with DBR 16.4 LTS or newer. For `interactive`, your
+  cluster must be UC-enabled and on 16.4+.
+- Serverless SQL warehouses are a separate setting from serverless jobs and pipelines, so a workspace without serverless
+  jobs can still have one.
+
+```bash
+# Classic: job cluster (node types: AWS i3.xlarge / m5d.xlarge, Azure Standard_D4ds_v5, GCP n2-highmem-4)
+databricks bundle deploy -t classic --profile <PROFILE> --var="catalog=<CATALOG>" --var="node_type_id=<NODE_TYPE>"
+databricks bundle run clinical_hotspotting_e2e -t classic --profile <PROFILE> --var="catalog=<CATALOG>" --var="node_type_id=<NODE_TYPE>"
+
+# Interactive: existing all-purpose cluster for the notebook tasks
+databricks bundle deploy -t interactive --profile <PROFILE> --var="catalog=<CATALOG>" \
+  --var="existing_cluster_id=<CLUSTER_ID>" --var="node_type_id=<NODE_TYPE>"
+databricks bundle run clinical_hotspotting_e2e -t interactive --profile <PROFILE> --var="catalog=<CATALOG>" \
+  --var="existing_cluster_id=<CLUSTER_ID>" --var="node_type_id=<NODE_TYPE>"
+```
+
+Use the same target in every command (deploy, run, destroy). Each target is a separate deployment with its own job and
+pipeline.
 
 ---
 
@@ -293,11 +334,16 @@ databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>"
 databricks bundle run clinical_hotspotting_e2e -t dev --profile <PROFILE> --var="catalog=<CATALOG>" --only run_sdp_pipeline+
 ```
 
-**Second copy in the same workspace.** Use a different `schema` and `genie_title`, so the copies don't overwrite each other:
+**Second copy in the same workspace.** A copy is a separate deployment, so it needs a **different target**, plus a
+different `schema` and `genie_title`. Changing only `--var` values on the same target redeploys the same job and
+pipeline instead of creating new ones.
 
 ```bash
-databricks bundle deploy -t dev --profile <PROFILE> --var="catalog=<CATALOG>" --var="schema=clinical_hotspotting_v2" --var="genie_title=Clinical Hotspotting v2"
+databricks bundle deploy -t prod --profile <PROFILE> --var="catalog=<CATALOG>" --var="schema=clinical_hotspotting_v2" --var="genie_title=Clinical Hotspotting v2"
 ```
+
+The pipeline name includes the schema (`clinical-hotspotting-sdp-<schema>`), because pipeline names must be unique
+in a workspace.
 
 ## Clean up
 
@@ -323,7 +369,11 @@ databricks experimental aitools tools query "DROP SCHEMA <CATALOG>.clinical_hots
 | `catalog` variable has no value | Pass `--var="catalog=<CATALOG>"`, or use one of the other options above |
 | `PERMISSION_DENIED` creating the schema | Grant `USE CATALOG` and `CREATE SCHEMA` on the catalog, or pick another one |
 | Pipeline fails on `ai_*` functions | AI Functions / Foundation Model APIs are not enabled in this workspace or region |
-| `create_genie_agent` fails with "No SQL warehouse found" | Pass `--var="warehouse_id=<ID>"` |
+| `create_genie_agent` fails with "No serverless SQL warehouse found" | Create a serverless SQL warehouse (or ask an admin to enable serverless SQL) and pass `--var="warehouse_id=<ID>"` |
+| `create_genie_agent` fails with "Warehouse … is not serverless" | Genie in this project requires a serverless warehouse. Pass a serverless `warehouse_id` |
+| Tasks fail with a serverless-not-enabled error | The workspace has no serverless jobs or pipelines. Use `-t classic` or `-t interactive` |
+| `classic` deploy fails on `node_type_id` | Pass a node type valid for your cloud: `databricks clusters list-node-types --profile <PROFILE>` |
+| `pipeline name ... is already used` (409) | Another deployment uses the same schema. Use a different `schema` (it's part of the pipeline name) |
 | Genie smoke test times out | The warehouse was cold. Re-run the task, or set `genie_smoke_test=false` |
 
 ## Metric view design
