@@ -42,7 +42,7 @@ resources:
 
         - task_key: create_genie_agent
           depends_on:
-            - task_key: run_sdp_pipeline
+            - task_key: create_metric_view   # Genie attaches the metric views, so they must exist first
           notebook_task:
             notebook_path: ../src/09_genie_config.py
 

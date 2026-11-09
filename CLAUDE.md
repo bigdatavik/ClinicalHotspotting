@@ -21,7 +21,7 @@ scripts/destroy.sh                  full teardown: bundle destroy → trash Geni
 prompts/                            git-ignored local prompts (not part of the repo)
 ```
 
-Job DAG: `generate_synthetic_data → run_sdp_pipeline → {create_metric_view, create_genie_agent}`.
+Job DAG: `generate_synthetic_data → run_sdp_pipeline → create_metric_view → create_genie_agent` (Genie attaches both metric views, so they must exist first).
 
 ## Commands
 
@@ -85,6 +85,8 @@ Prefer `--only <task>` when iterating, and don't trigger a full run without a re
   `parent_path = ${workspace.file_path}`, so the agent lives in the bundle folder and **`bundle destroy` deletes it**
   (verified 2026-11-05). Destroy also deletes the pipeline's tables (`cascade_on_destroy` defaults to true). The source
   tables, metric views and schema remain; drop them with `DROP SCHEMA ... CASCADE`.
+- **Genie attaches both metric views** (`data_sources.metric_views`) plus 9 tables; KPI examples use `MEASURE()`.
+  "Impactable" is a synonym of `is_actionable_hotspot` (the blog's term).
 - **Genie config lives in `09_genie_config.py`.** It uses `serialized_space` version 2 with deterministic uuid5 ids, and
   id-keyed arrays must be sorted by id. Every example and benchmark SQL runs before the API call. Verify column names
   against the gold tables: the original config referenced columns that didn't exist (`organ_type`, `gap_type`, a

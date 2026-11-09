@@ -8,16 +8,16 @@
 # MAGIC
 # MAGIC | Surface | What is configured |
 # MAGIC |---|---|
-# MAGIC | Data | 9 tables (8 gold + `silver_care_gaps`) with column descriptions, synonyms and entity matching |
-# MAGIC | Instructions | Glossary, routing rules, rounding, "use pre-computed metrics" rule |
-# MAGIC | Example SQL | 8 question → SQL pairs |
+# MAGIC | Data | 2 governed metric views (`mv_clinical_hotspotting`, `mv_encounter_utilization`) + 9 tables (8 gold + `silver_care_gaps`), with column descriptions, synonyms and entity matching |
+# MAGIC | Instructions | Glossary, routing (KPIs → metric views via `MEASURE()`), rounding, "use pre-computed metrics" rule |
+# MAGIC | Example SQL | 10 question → SQL pairs (3 on the metric views) |
 # MAGIC | Join specs | member hotspots ↔ narratives / recommendations / care gaps |
 # MAGIC | SQL snippets | Filters, measures and expressions (business definitions) |
 # MAGIC | Sample questions | 10 starter questions shown in the UI |
-# MAGIC | Benchmarks | 12 questions with reference SQL for Genie evaluation |
+# MAGIC | Benchmarks | 14 questions with reference SQL for Genie evaluation |
 # MAGIC
-# MAGIC Runs as the last task of the **Clinical Hotspotting End-to-End Pipeline** job (the tables must exist before a Genie
-# MAGIC space can reference them). Idempotent — safe to re-run after a data refresh or a config change.
+# MAGIC Runs as the last task of the **Clinical Hotspotting End-to-End Pipeline** job, after the pipeline and the metric views
+# MAGIC (a Genie space can only reference objects that exist). Idempotent — safe to re-run after a data refresh or a config change.
 # MAGIC
 # MAGIC Parameters (widgets / job parameters): `catalog`, `schema`, `warehouse_id`, `genie_title`, `parent_path`, `smoke_test`.
 
@@ -92,7 +92,7 @@ TABLES = {
         col("sdoh_risk_level", "Social determinants of health risk: High / Moderate / Low", ["social risk", "SDoH risk"], entity=True),
         col("risk_score", "Clinical risk score, 0.3 to 4.5", ["risk", "clinical risk"]),
         col("hotspot_score", "Composite hotspot score: ED*1 + IP*3 + readmits*4 + open gaps*0.5 + nonadherent classes*1 + SDoH barriers*0.5", ["hotspot", "composite score"]),
-        col("is_actionable_hotspot", "True when high utilization AND something the plan can fix (care gap, non-adherence, no PCP visit, or high SDoH)", ["actionable", "hotspot flag", "can we help"]),
+        col("is_actionable_hotspot", "True when high utilization AND something the plan can fix (care gap, non-adherence, no PCP visit, or high SDoH)", ["actionable", "impactable", "impactability", "hotspot flag", "can we help"]),
         col("avg_medication_adherence_pdc", "Average proportion of days covered across drug classes; >= 0.80 is adherent", ["PDC", "adherence", "medication adherence"]),
         col("nonadherent_med_classes", "Number of drug classes with PDC < 0.80", ["non-adherent medications", "missed meds"]),
         col("sdoh_barrier_count", "Count of social barriers (housing, food, transportation, isolation), 0-4", ["SDoH barriers", "social barriers", "social needs"]),
@@ -157,11 +157,38 @@ TABLES = {
     ],
 }
 
-data_sources = {"tables": sorted(
-    [{"identifier": f"{FQSN}.{t}", "column_configs": sorted(cfgs, key=lambda c: c["column_name"])}
-     for t, cfgs in TABLES.items()],
-    key=lambda t: t["identifier"])}
-print(f"Tables: {len(data_sources['tables'])}")
+# Governed metric views (created by 05_create_metric_view). Genie queries them with MEASURE().
+# Entity matching / format assistance are Genie-space settings, so they are set here for the categorical dimensions.
+METRIC_VIEWS = {
+    "mv_clinical_hotspotting": [
+        col("market", None, ["state", "region"], entity=True),
+        col("risk_band", None, ["risk tier", "risk level"], entity=True),
+        col("sdoh_risk_level", None, ["social risk", "SDoH risk"], entity=True),
+        col("zip_area", None, ["zip"], entity=True),
+    ],
+    "mv_encounter_utilization": [
+        col("encounter_type", None, ["visit type", "setting"], entity=True),
+        col("primary_dx_category", None, ["diagnosis", "dx", "condition"], entity=True),
+        col("transplant_type", None, ["organ", "organ type"], entity=True),
+        col("provider_group", None, ["health system", "medical group"], entity=True),
+        col("peer_group", None, None, entity=True),
+        col("specialty", None, ["provider type"], entity=True),
+        col("market", None, ["state"], entity=True),
+        col("risk_band", None, ["risk tier"], entity=True),
+    ],
+}
+
+data_sources = {
+    "metric_views": sorted(
+        [{"identifier": f"{FQSN}.{mv}", "column_configs": sorted(cfgs, key=lambda c: c["column_name"])}
+         for mv, cfgs in METRIC_VIEWS.items()],
+        key=lambda t: t["identifier"]),
+    "tables": sorted(
+        [{"identifier": f"{FQSN}.{t}", "column_configs": sorted(cfgs, key=lambda c: c["column_name"])}
+         for t, cfgs in TABLES.items()],
+        key=lambda t: t["identifier"]),
+}
+print(f"Metric views: {len(data_sources['metric_views'])}, tables: {len(data_sources['tables'])}")
 
 # COMMAND ----------
 
@@ -171,10 +198,19 @@ This Genie agent covers the Clinical Hotspotting & Outcomes Intelligence solutio
 All data is synthetic and PHI-free.
 
 ## Scope
-Use only the attached tables in {FQSN}. Do not reference other schemas or catalogs.
+Use only the attached metric views and tables in {FQSN}. Do not reference other schemas or catalogs.
+
+## Governed metrics (prefer these for KPIs)
+- Member KPIs (member counts, actionable / impactable rate, ED visits and admits per 1,000, readmission rate, cost per
+  member, average PDC, SDoH burden, open care gaps) → mv_clinical_hotspotting, queried with MEASURE(<measure>) and
+  GROUP BY its dimensions.
+- Utilization by encounter type, diagnosis, provider group, peer group, specialty or month (encounters, 30-day
+  readmission rate per encounter, complication rate, length of stay, cost per encounter) → mv_encounter_utilization.
+- Use the tables for member-level detail and lists, AI text, and the pre-aggregated program / provider / transplant
+  outcomes.
 
 ## Glossary
-- Actionable hotspot: a member with high utilization (>=2 ED visits, or >=1 inpatient admit, or >=1 readmission) AND
+- Actionable hotspot (also called "impactable" member): a member with high utilization (>=2 ED visits, or >=1 inpatient admit, or >=1 readmission) AND
   something the plan can fix (open care gap, non-adherent medication, no PCP follow-up, or High SDoH risk). Column: is_actionable_hotspot.
 - PDC (Proportion of Days Covered): medication adherence; >= 0.80 = adherent (Stars threshold).
 - ED visits per 1,000 / Admits per 1,000: SUM(visits) * 1000 / member count.
@@ -210,22 +246,38 @@ SAMPLE_QUESTIONS = [
     "What AI intervention is recommended for Very High risk members with high SDoH burden?",
     "Which providers are high readmission outliers?",
     "How many open care gaps exist by measure?",
-    "How many members are recommended for Complex Case Management?",
+    "Which diagnoses have the highest inpatient readmission rate?",
     "Show transplant volume and outcomes by organ type",
     "What are the top ZIP areas by actionable hotspot rate?",
     "Show program outcomes: engagement rate and ED reduction by cohort",
-    "Which markets have the highest average risk score?",
+    "How have ED visits and inpatient admissions trended by month?",
 ]
 
 EXAMPLE_SQLS = [
-    ("How many actionable hotspot members are there in each market?", f"""
+    ("How many actionable hotspot members are there in each market, and what share is that?", f"""
 SELECT market,
-  COUNT(*) AS total_members,
-  SUM(CAST(is_actionable_hotspot AS INT)) AS actionable_members,
-  ROUND(AVG(CAST(is_actionable_hotspot AS DOUBLE)) * 100, 1) AS actionable_pct
-FROM {FQSN}.gold_member_hotspots
+  MEASURE(total_members) AS total_members,
+  MEASURE(actionable_hotspot_members) AS actionable_members,
+  MEASURE(actionable_hotspot_rate) AS actionable_rate
+FROM {FQSN}.mv_clinical_hotspotting
 GROUP BY market
 ORDER BY actionable_members DESC"""),
+    ("Which diagnoses have the highest inpatient readmission rate?", f"""
+SELECT primary_dx_category,
+  MEASURE(total_encounters) AS encounters,
+  MEASURE(readmission_rate_30d) AS readmission_rate_30d,
+  MEASURE(avg_length_of_stay) AS avg_los_days
+FROM {FQSN}.mv_encounter_utilization
+WHERE encounter_type = 'Inpatient'
+GROUP BY primary_dx_category
+ORDER BY readmission_rate_30d DESC"""),
+    ("How have ED visits and inpatient admissions trended by month?", f"""
+SELECT admit_month,
+  MEASURE(ed_visits) AS ed_visits,
+  MEASURE(inpatient_admits) AS inpatient_admits
+FROM {FQSN}.mv_encounter_utilization
+GROUP BY admit_month
+ORDER BY admit_month"""),
     ("What is the average medication adherence PDC by risk band?", f"""
 SELECT risk_band,
   COUNT(*) AS members,
@@ -310,6 +362,8 @@ SNIPPETS = {
 }
 
 BENCHMARKS = [
+    ("What is the overall actionable hotspot rate?", f"SELECT MEASURE(actionable_hotspot_rate) AS actionable_rate FROM {FQSN}.mv_clinical_hotspotting"),
+    ("Which diagnosis has the highest inpatient 30-day readmission rate?", f"SELECT primary_dx_category, MEASURE(readmission_rate_30d) AS readmission_rate_30d FROM {FQSN}.mv_encounter_utilization WHERE encounter_type = 'Inpatient' GROUP BY primary_dx_category ORDER BY readmission_rate_30d DESC LIMIT 1"),
     ("How many total members are there?", f"SELECT COUNT(*) AS total_members FROM {FQSN}.gold_member_hotspots"),
     ("How many actionable hotspot members are there?", f"SELECT COUNT(*) AS actionable_members FROM {FQSN}.gold_member_hotspots WHERE is_actionable_hotspot = true"),
     ("What is the most common AI-recommended program?", f"SELECT ai_recommended_intervention, COUNT(*) AS members FROM {FQSN}.gold_intervention_recs GROUP BY ai_recommended_intervention ORDER BY members DESC LIMIT 1"),

@@ -473,7 +473,7 @@ for layer, names in layers.items():
 # MAGIC | 4 | Silver (SDP + AI) | 8 `silver_*` tables | 5 AI-enriched |
 # MAGIC | 5 | Gold (SDP) | 8 `gold_*` tables | 3,225 actionable members |
 # MAGIC | 6 | Metric views | `mv_clinical_hotspotting`, `mv_encounter_utilization` | Member grain (14 measures) + encounter grain (9 measures) |
-# MAGIC | 7 | Genie agent | 9 tables, 12 benchmarks | Created by `09_genie_config` |
+# MAGIC | 7 | Genie agent | 2 metric views + 9 tables, 14 benchmarks | Created by `09_genie_config` |
 # MAGIC
 # MAGIC ### Notebooks in this project
 # MAGIC - `00_config` — shared constants

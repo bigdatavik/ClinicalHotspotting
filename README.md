@@ -20,13 +20,14 @@ All data is **synthetic and PHI-free**.
 | Job | `Clinical Hotspotting End-to-End Pipeline` | Orchestrates the 4 steps below (serverless, a job cluster, or your cluster; see [Choosing compute](#choosing-compute)) |
 | Pipeline (SDP; serverless or classic) | `clinical-hotspotting-sdp-<schema>` | 8 bronze → 8 silver (5 AI-enriched) → 8 gold tables |
 | Metric views | `mv_clinical_hotspotting` (one row per member), `mv_encounter_utilization` (one row per encounter) | 14 member KPIs + 9 encounter KPIs, reconciled with the source tables on every run |
-| Genie agent | `Clinical Hotspotting & Outcomes Intelligence` | 9 tables, instructions, example SQL, joins, snippets, synonyms, entity matching, 10 sample questions, 12 benchmarks |
+| Genie agent | `Clinical Hotspotting & Outcomes Intelligence` | Both metric views (KPIs via `MEASURE()`) + 9 tables, instructions, example SQL, joins, snippets, synonyms, entity matching, 10 sample questions, 14 benchmarks |
 
 Job tasks:
 
 ```
-generate_synthetic_data ──► run_sdp_pipeline ──┬──► create_metric_view
-                                               └──► create_genie_agent  (creates/updates the agent, then asks it a test question)
+generate_synthetic_data ──► run_sdp_pipeline ──► create_metric_view ──► create_genie_agent
+                                                  (+ reconciliation)    (attaches the metric views + tables,
+                                                                         then asks the agent a test question)
 ```
 
 | Layer | Tables | AI functions |
@@ -136,7 +137,7 @@ The command prints a run URL and waits until the job finishes. The job runs four
 | 1 | `generate_synthetic_data` | `01_generate_synthetic_data` | Schema + 8 source tables | ~1 min |
 | 2 | `run_sdp_pipeline` | `02`–`04` (pipeline) | 8 bronze, 8 silver (AI-enriched), 8 gold tables | ~25 min |
 | 3 | `create_metric_view` | `05_create_metric_view` | `mv_clinical_hotspotting` + `mv_encounter_utilization`, then reconciles them with the source tables | <1 min |
-| 4 | `create_genie_agent` | `09_genie_config` | **Genie agent** (create or update) + smoke-test question | ~1 min |
+| 4 | `create_genie_agent` | `09_genie_config` | **Genie agent** (create or update) on the metric views + tables, then a smoke-test question | ~1 min |
 
 Most of the pipeline time goes to the AI functions, which make about 75k LLM calls (mostly `ai_classify` on ~45k
 pharmacy claims).
@@ -425,3 +426,6 @@ Each metric view has a single grain, so no measure double-counts:
 An earlier version joined member rows to encounters in one view. That repeated each member once per encounter and
 inflated member KPIs (for example, the actionable rate read ~0.80 instead of ~0.65). The last cell of
 `05_create_metric_view` compares both views with the source tables and fails the job if they ever disagree.
+
+Both views are attached to the Genie agent, so KPI questions ("impactable rate by market", "readmission rate by
+diagnosis") are answered with `MEASURE()` from these governed definitions, not with ad-hoc SQL.
